@@ -12,6 +12,7 @@ using NuGet.Common;
 using NuGet.Packaging;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
+using NuGetMirror.PackagePersisters;
 
 namespace NuGetMirror
 {
@@ -175,11 +176,20 @@ namespace NuGetMirror
                 var log = new FileLogger(consoleLog, LogLevel.Error, errorLogPath);
                 var deepLogger = new FilterLogger(log, LogLevel.Error);
 
+                NuGetMirror.PackagePersisters.IPackagePersister persister;
+                if (useV3Format)
+                {
+                    persister = new NupkgV3PackagePersister(storagePaths, mode, log, deepLogger);
+                }
+                else
+                {
+                    persister = new NupkgV2PackagePersister(storagePaths, mode, log, deepLogger);
+                }
+
                 // Init
                 log.LogInformation($"Mirroring {index.AbsoluteUri} -> {outputPath}");
 
-                var formatName = useV3Format ? "{id}/{version}/{id}.{version}.nupkg" : "{id}/{id}.{version}.nupkg";
-                log.LogInformation($"Folder format:\t{formatName}");
+                log.LogInformation($"Folder format:\t{persister.NameFormat}");
 
                 log.LogInformation($"Cursor:\t\t{Path.Combine(outputPath, "cursor.json")}");
                 log.LogInformation($"Change log:\t{outputFilesInfo.FullName}");
@@ -263,16 +273,7 @@ namespace NuGetMirror
                             {
                                 var entry = toProcess.Dequeue();
 
-                                Func<CatalogEntry, Task<FileInfo>> getNupkg = null;
-
-                                if (useV3Format)
-                                {
-                                    getNupkg = (e) => DownloadNupkgV3Async(e, storagePaths, mode, log, deepLogger, token);
-                                }
-                                else
-                                {
-                                    getNupkg = (e) => DownloadNupkgV2Async(e, storagePaths, mode, log, token);
-                                }
+                                Func<CatalogEntry, Task<FileInfo>> getNupkg = (e) => persister.PersistAsync(e, token);
 
                                 // Queue download task
                                 batch.Enqueue(new Func<Task<NupkgResult>>(() => RunWithRetryAsync(entry, ignoreErrors.HasValue(), getNupkg, log, token)));
@@ -382,163 +383,6 @@ namespace NuGetMirror
             return sorted.OrderByDescending(e => e.CommitTimeStamp).FirstOrDefault()?.CommitTimeStamp;
         }
 
-        internal static string GetV2Path(
-            CatalogEntry entry,
-            string rootDir)
-        {
-            // id/id.version.nupkg 
-            var outputDir = Path.Combine(rootDir, entry.Id.ToLowerInvariant());
-            return Path.Combine(outputDir, $"{entry.FileBaseName}.nupkg");
-        }
-
-        internal static string GetV3Path(
-            CatalogEntry entry,
-            string rootDir)
-        {
-            // id/version/id.version.nupkg 
-            var versionFolderResolver = new VersionFolderPathResolver(rootDir);
-            return versionFolderResolver.GetPackageFilePath(entry.Id, entry.Version);
-        }
-
-        internal static async Task<FileInfo> DownloadNupkgV2Async(
-            CatalogEntry entry,
-            IEnumerable<DirectoryInfo> storagePaths,
-            DownloadMode mode,
-            ILogger log,
-            CancellationToken token)
-        {
-            FileInfo result = null;
-
-            DirectoryInfo rootDir = null;
-            var lastCreated = DateTimeOffset.MinValue;
-
-            // Check if the nupkg already exists on another drive.
-            foreach (var storagePath in storagePaths)
-            {
-                var checkOutputDir = Path.Combine(storagePath.FullName, entry.Id.ToLowerInvariant());
-                var checkNupkgPath = Path.Combine(checkOutputDir, $"{entry.FileBaseName}.nupkg");
-
-                if (File.Exists(checkNupkgPath))
-                {
-                    // Use the existing path
-                    lastCreated = File.GetCreationTimeUtc(checkNupkgPath);
-                    rootDir = storagePath;
-                    break;
-                }
-            }
-
-            // Does not exist, use the path with the most free space.
-            if (rootDir == null)
-            {
-                rootDir = GetPathWithTheMostFreeSpace(storagePaths);
-            }
-
-            // id/id.version.nupkg 
-            var outputDir = Path.Combine(rootDir.FullName, entry.Id.ToLowerInvariant());
-            var nupkgPath = Path.Combine(outputDir, $"{entry.FileBaseName}.nupkg");
-
-            // Download
-            var nupkgFile = await entry.DownloadNupkgAsync(outputDir, mode, token);
-
-            if (File.Exists(nupkgPath))
-            {
-                var currentCreated = File.GetCreationTimeUtc(nupkgPath);
-
-                if (lastCreated < currentCreated)
-                {
-                    result = nupkgFile;
-                    log.LogInformation(nupkgFile.FullName);
-                }
-                else
-                {
-                    log.LogDebug($"Skipping. Current file is the same or newer. {lastCreated.ToString("o")} {currentCreated.ToString("o")}" + nupkgFile.FullName);
-                }
-            }
-            else
-            {
-                log.LogDebug($"Nupkg skipped. " + nupkgFile.FullName);
-            }
-
-            return result;
-        }
-
-        internal static async Task<FileInfo> DownloadNupkgV3Async(
-            CatalogEntry entry,
-            IEnumerable<DirectoryInfo> storagePaths,
-            DownloadMode mode,
-            ILogger log,
-            ILogger deepLog,
-            CancellationToken token)
-        {
-            FileInfo result = null;
-            DirectoryInfo rootDir = null;
-            var lastCreated = DateTimeOffset.MinValue;
-
-            // Check if the nupkg already exists on another drive.
-            foreach (var storagePath in storagePaths)
-            {
-                var currentResolver = new VersionFolderPathResolver(storagePath.FullName);
-                var checkNupkgPath = currentResolver.GetPackageFilePath(entry.Id, entry.Version);
-
-                if (File.Exists(checkNupkgPath))
-                {
-                    // Use the existing path
-                    lastCreated = File.GetCreationTimeUtc(checkNupkgPath);
-                    rootDir = storagePath;
-                    break;
-                }
-            }
-
-            if (rootDir == null)
-            {
-                // Not found, use the path with the most space
-                rootDir = GetPathWithTheMostFreeSpace(storagePaths);
-            }
-
-            // id/version/id.version.nupkg
-            var versionFolderResolver = new VersionFolderPathResolver(rootDir.FullName);
-            var outputDir = versionFolderResolver.GetInstallPath(entry.Id, entry.Version);
-            var hashPath = versionFolderResolver.GetHashPath(entry.Id, entry.Version);
-            var nuspecPath = versionFolderResolver.GetManifestFilePath(entry.Id, entry.Version);
-            var nupkgPath = versionFolderResolver.GetPackageFilePath(entry.Id, entry.Version);
-
-            // Download
-            var nupkgFile = await entry.DownloadNupkgAsync(outputDir, mode, token);
-
-            if (File.Exists(nupkgPath))
-            {
-                var currentCreated = File.GetCreationTimeUtc(nupkgPath);
-
-                // Clean up nuspec and hash if the file changed
-                if (lastCreated < currentCreated || !File.Exists(hashPath) || !File.Exists(nuspecPath))
-                {
-                    result = nupkgFile;
-                    log.LogInformation(nupkgFile.FullName);
-
-                    FileUtility.Delete(hashPath);
-                    FileUtility.Delete(nuspecPath);
-
-                    using (var fileStream = File.OpenRead(nupkgFile.FullName))
-                    {
-                        var packageHash = Convert.ToBase64String(new CryptoHashProvider("SHA512").CalculateHash(fileStream));
-                        fileStream.Seek(0, SeekOrigin.Begin);
-
-                        // Write nuspec
-                        using (var reader = new PackageArchiveReader(fileStream))
-                        {
-                            var nuspecFile = reader.GetNuspecFile();
-                            reader.ExtractFile(nuspecFile, nuspecPath, deepLog);
-                        }
-
-                        // Write package hash
-                        File.WriteAllText(hashPath, packageHash);
-                    }
-                }
-            }
-
-            return result;
-        }
-
         internal static async Task<NupkgResult> RunWithRetryAsync(
             CatalogEntry entry,
             bool ignoreErrors,
@@ -596,40 +440,6 @@ namespace NuGetMirror
 
             return result;
         }
-
-        /// <summary>
-        /// Get free space available at path.
-        /// </summary>
-        private static long GetFreeSpace(DirectoryInfo path)
-        {
-            var root = Path.GetPathRoot(path.FullName);
-
-            foreach (var drive in DriveInfo.GetDrives())
-            {
-                if (drive.IsReady && StringComparer.OrdinalIgnoreCase.Equals(root, drive.Name))
-                {
-                    return drive.TotalFreeSpace;
-                }
-            }
-            return -1;
-        }
-
-        /// <summary>
-        /// Get path with the most free space.
-        /// </summary>
-        private static DirectoryInfo GetPathWithTheMostFreeSpace(IEnumerable<DirectoryInfo> paths)
-        {
-            if (paths.Count() == 1)
-            {
-                return paths.First();
-            }
-
-            return paths.Select(e => new KeyValuePair<DirectoryInfo, long>(e, GetFreeSpace(e)))
-                 .OrderByDescending(e => e.Value)
-                 .FirstOrDefault()
-                 .Key;
-        }
-
 
         internal class NupkgResult
         {

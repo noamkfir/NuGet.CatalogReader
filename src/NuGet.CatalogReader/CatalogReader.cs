@@ -89,7 +89,7 @@ namespace NuGet.CatalogReader
         /// Returns only the latest id/version combination for each package.
         /// Older edits and deleted packages are ignored.
         /// </summary>
-        public Task<IReadOnlyList<CatalogEntry>> GetFlattenedEntriesAsync()
+        public Task<IEnumerable<CatalogEntry>> GetFlattenedEntriesAsync()
         {
             return GetFlattenedEntriesAsync(CancellationToken.None);
         }
@@ -98,7 +98,7 @@ namespace NuGet.CatalogReader
         /// Returns only the latest id/version combination for each package.
         /// Older edits and deleted packages are ignored.
         /// </summary>
-        public Task<IReadOnlyList<CatalogEntry>> GetFlattenedEntriesAsync(CancellationToken token)
+        public Task<IEnumerable<CatalogEntry>> GetFlattenedEntriesAsync(CancellationToken token)
         {
             return GetFlattenedEntriesAsync(DateTimeOffset.MinValue, DateTimeOffset.UtcNow, token);
         }
@@ -109,7 +109,7 @@ namespace NuGet.CatalogReader
         /// <param name="start">End time of the previous window. Commits exactly matching the start time will NOT be included. This is designed to take the cursor time.</param>
         /// <param name="end">Maximum time to include. Exact matches will be included.</param>
         /// <returns>Entries within the start and end time. Start time is NOT included.</returns>
-        public Task<IReadOnlyList<CatalogEntry>> GetFlattenedEntriesAsync(DateTimeOffset start, DateTimeOffset end)
+        public Task<IEnumerable<CatalogEntry>> GetFlattenedEntriesAsync(DateTimeOffset start, DateTimeOffset end)
         {
             return GetFlattenedEntriesAsync(start, end, CancellationToken.None);
         }
@@ -121,7 +121,7 @@ namespace NuGet.CatalogReader
         /// <param name="end">Maximum time to include. Exact matches will be included.</param>
         /// <param name="token">Cancellation token.</param>
         /// <returns>Entries within the start and end time. Start time is NOT included.</returns>
-        public async Task<IReadOnlyList<CatalogEntry>> GetFlattenedEntriesAsync(DateTimeOffset start, DateTimeOffset end, CancellationToken token)
+        public async Task<IEnumerable<CatalogEntry>> GetFlattenedEntriesAsync(DateTimeOffset start, DateTimeOffset end, CancellationToken token)
         {
             var set = new HashSet<CatalogEntry>();
             var deleted = new HashSet<CatalogEntry>();
@@ -144,7 +144,7 @@ namespace NuGet.CatalogReader
                 }
             }
 
-            return set.OrderByDescending(e => e.CommitTimeStamp).ToList();
+            return set.OrderByDescending(e => e.CommitTimeStamp);
         }
 
         /// <summary>
@@ -194,7 +194,7 @@ namespace NuGet.CatalogReader
         /// <summary>
         /// Read all catalog entries.
         /// </summary>
-        public Task<IReadOnlyList<CatalogEntry>> GetEntriesAsync()
+        public Task<IEnumerable<CatalogEntry>> GetEntriesAsync()
         {
             return GetEntriesAsync(CancellationToken.None);
         }
@@ -202,7 +202,7 @@ namespace NuGet.CatalogReader
         /// <summary>
         /// Read all catalog entries.
         /// </summary>
-        public Task<IReadOnlyList<CatalogEntry>> GetEntriesAsync(CancellationToken token)
+        public Task<IEnumerable<CatalogEntry>> GetEntriesAsync(CancellationToken token)
         {
             return GetEntriesAsync(DateTimeOffset.MinValue, DateTimeOffset.UtcNow, token);
         }
@@ -210,7 +210,7 @@ namespace NuGet.CatalogReader
         /// <summary>
         /// Get catalog pages.
         /// </summary>
-        public Task<IReadOnlyList<CatalogPageEntry>> GetPageEntriesAsync(CancellationToken token)
+        public Task<IEnumerable<CatalogPageEntry>> GetPageEntriesAsync(CancellationToken token)
         {
             return GetPageEntriesAsync(DateTimeOffset.MinValue, DateTimeOffset.UtcNow, token);
         }
@@ -218,7 +218,7 @@ namespace NuGet.CatalogReader
         /// <summary>
         /// Get catalog pages.
         /// </summary>
-        public async Task<IReadOnlyList<CatalogPageEntry>> GetPageEntriesAsync(DateTimeOffset start, DateTimeOffset end, CancellationToken token)
+        public async Task<IEnumerable<CatalogPageEntry>> GetPageEntriesAsync(DateTimeOffset start, DateTimeOffset end, CancellationToken token)
         {
             var index = await GetCatalogIndexAsync(token);
 
@@ -276,7 +276,7 @@ namespace NuGet.CatalogReader
                 inRange.Add(commitAfter);
             }
 
-            return inRange.OrderBy(e => e.CommitTimeStamp).ToList();
+            return inRange.OrderBy(e => e.CommitTimeStamp);
         }
 
         /// <summary>
@@ -286,31 +286,31 @@ namespace NuGet.CatalogReader
         /// <param name="end">Maximum time to include. Exact matches will be included.</param>
         /// <param name="token">Cancellation token.</param>
         /// <returns>Entries within the start and end time. Start time is NOT included.</returns>
-        public async Task<IReadOnlyList<CatalogEntry>> GetEntriesAsync(DateTimeOffset start, DateTimeOffset end, CancellationToken token)
+        public async Task<IEnumerable<CatalogEntry>> GetEntriesAsync(DateTimeOffset start, DateTimeOffset end, CancellationToken token)
         {
             var pages = await GetPageEntriesAsync(start, end, token);
 
             return await GetEntriesAsync(pages, start, end, token);
         }
 
-        private async Task<IReadOnlyList<CatalogEntry>> GetEntriesCommitTimeDescAsync(DateTimeOffset start, DateTimeOffset end, CancellationToken token)
+        private async Task<IEnumerable<CatalogEntry>> GetEntriesCommitTimeDescAsync(DateTimeOffset start, DateTimeOffset end, CancellationToken token)
         {
             var entries = await GetEntriesAsync(start, end, token);
 
-            return entries.OrderByDescending(e => e.CommitTimeStamp).ToList();
+            return entries.OrderByDescending(e => e.CommitTimeStamp);
         }
 
-        public async Task<IReadOnlyList<CatalogEntry>> GetEntriesAsync(IEnumerable<CatalogPageEntry> pages, DateTimeOffset start, DateTimeOffset end, CancellationToken token)
+        public async Task<IEnumerable<CatalogEntry>> GetEntriesAsync(IEnumerable<CatalogPageEntry> pages, DateTimeOffset start, DateTimeOffset end, CancellationToken token)
         {
             var entries = await GetEntriesAsync(pages, token);
 
-            return entries.Where(e => e.CommitTimeStamp > start && e.CommitTimeStamp <= end).ToList();
+            return entries.Where(e => e.CommitTimeStamp > start && e.CommitTimeStamp <= end);
         }
 
         /// <summary>
         /// Retrieve entries for the given index page entries.
         /// </summary>
-        public async Task<List<CatalogEntry>> GetEntriesAsync(IEnumerable<CatalogPageEntry> pages, CancellationToken token)
+        public async Task<IEnumerable<CatalogEntry>> GetEntriesAsync(IEnumerable<CatalogPageEntry> pages, CancellationToken token)
         {
             var tasks = pages.Select(page =>
                 new Func<Task<JObject>>(() =>
@@ -328,7 +328,7 @@ namespace NuGet.CatalogReader
                 process: process,
                 token: token);
 
-            return entries.ToList();
+            return entries;
         }
 
         private async Task<bool> CompleteTaskAsync(Task<JObject> task, ReferenceCache cache, ConcurrentBag<CatalogEntry> entries)

@@ -87,8 +87,8 @@ namespace NuGet.CatalogReader.Tests
                     var entry = entries.FirstOrDefault();
 
                     // Assert
-                    Assert.Equal(1, entries.Count());
-                    Assert.Equal(1, flatEntries.Count());
+                    Assert.Single(entries);
+                    Assert.Single(flatEntries);
                     Assert.Equal(1, set.Count);
 
                     Assert.Equal("a", entry.Id);
@@ -344,7 +344,7 @@ namespace NuGet.CatalogReader.Tests
                     // Assert
                     // 3 adds, 2 removes
                     Assert.Equal(5, entries.Count());
-                    Assert.Equal(1, flatEntries.Count());
+                    Assert.Single(flatEntries);
                     Assert.Equal(1, set.Count);
 
                     Assert.Equal("a", entry.Id);
@@ -468,14 +468,14 @@ namespace NuGet.CatalogReader.Tests
                     baseUri,
                     catalogPageSize: 2,
                     log: log);
-                
+
                 foreach (var i in Enumerable.Range(0, packageCount))
                 {
                     var nupkgFolder = Path.Combine(nupkgsFolder, i.ToString());
                     TestNupkg.Save(nupkgFolder, new TestNupkg($"Package{i}", "1.0.0"));
                     await CatalogReaderTestHelpers.PushPackagesAsync(workingDir, nupkgFolder, baseUri, log);
                 }
-                
+
                 var feedUri = Sleet.UriUtility.CreateUri(baseUri.AbsoluteUri + "index.json");
                 var httpSource = CatalogReaderTestHelpers.GetHttpSource(cache, feedFolder, baseUri);
 

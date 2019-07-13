@@ -9,7 +9,6 @@ using System.Threading.Tasks;
 using McMaster.Extensions.CommandLineUtils;
 using NuGet.CatalogReader;
 using NuGet.Common;
-using NuGet.Packaging;
 using NuGet.Protocol;
 using NuGet.Protocol.Core.Types;
 using NuGetMirror.PackagePersisters;
@@ -176,7 +175,7 @@ namespace NuGetMirror
                 var log = new FileLogger(consoleLog, LogLevel.Error, errorLogPath);
                 var deepLogger = new FilterLogger(log, LogLevel.Error);
 
-                NuGetMirror.PackagePersisters.IPackagePersister persister;
+                IPackagePersister persister;
                 if (useV3Format)
                 {
                     persister = new NupkgV3PackagePersister(storagePaths, mode, log, deepLogger);

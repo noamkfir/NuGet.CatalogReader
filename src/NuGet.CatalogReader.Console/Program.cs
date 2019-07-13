@@ -1,10 +1,9 @@
 ﻿using System;
-using System.Collections.Generic;
+using System.IO;
 using System.Linq;
-using System.Text.RegularExpressions;
+using System.Reflection;
+using System.Runtime.InteropServices;
 using System.Threading;
-using System.Threading.Tasks;
-using Newtonsoft.Json.Linq;
 
 namespace NuGet.CatalogReader
 {
@@ -16,6 +15,8 @@ namespace NuGet.CatalogReader
             {
                 var log = new ConsoleLogger();
 
+                string outputPath = GetOutputPath(log);
+
                 var reader = new CatalogReader(new Uri("https://api.nuget.org/v3/index.json"), TimeSpan.FromHours(0), log);
                 var entries = reader.GetFlattenedEntriesAsync(DateTimeOffset.Parse("2017-01-02"), DateTimeOffset.Parse("2017-01-03"), CancellationToken.None).Result;
 
@@ -23,14 +24,34 @@ namespace NuGet.CatalogReader
                 {
                     var entry = group.First();
 
-                    entry.DownloadNupkgAsync("d:\\tmp\\out");
-                    entry.DownloadNuspecAsync("d:\\tmp\\out");
+                    entry.DownloadNupkgAsync(outputPath);
+                    entry.DownloadNuspecAsync(outputPath);
                 }
             }
             catch (Exception ex)
             {
                 throw ex;
             }
+        }
+
+        private static string GetOutputPath(ConsoleLogger log)
+        {
+            string root;
+            var isWindows = RuntimeInformation.IsOSPlatform(OSPlatform.Windows);
+            if (isWindows)
+            {
+                root = "d:";
+            }
+            else
+            {
+                var codeBase = Assembly.GetExecutingAssembly().CodeBase;
+                var uri = new Uri(codeBase);
+                var directory = Path.GetDirectoryName(uri.LocalPath);
+                root = directory;
+            }
+            var outputPath = Path.Combine(root, "tmp", "out");
+            log.Log(NuGet.Common.LogLevel.Debug, string.Format("Output Path: {0}", outputPath));
+            return outputPath;
         }
     }
 }

@@ -15,6 +15,11 @@ namespace NuGetMirror.PackagePersisters
         public string NupkgPath { get; internal set; }
     }
 
+    public class PackagePersisterOptions
+    {
+        public bool SkipExisting { get; set; }
+    }
+
     public abstract class PackagePersister<T> : IPackagePersister
         where T : PackageInfo
     {
@@ -22,6 +27,7 @@ namespace NuGetMirror.PackagePersisters
         protected readonly DownloadMode _mode;
         protected readonly ILogger _log;
         protected readonly ILogger _deepLog;
+        protected readonly PackagePersisterOptions _options;
 
         public abstract string NameFormat { get; }
 
@@ -29,13 +35,15 @@ namespace NuGetMirror.PackagePersisters
             IEnumerable<DirectoryInfo> storagePaths,
             DownloadMode mode,
             ILogger log,
-            ILogger deepLog
+            ILogger deepLog,
+            PackagePersisterOptions options
         )
         {
             _storagePaths = storagePaths;
             _mode = mode;
             _log = log;
             _deepLog = deepLog;
+            _options = options;
         }
 
         public async Task<FileInfo> PersistAsync(
@@ -72,28 +80,37 @@ namespace NuGetMirror.PackagePersisters
 
             var packageInfo = CreatePackageInfo(entry, rootDir);
 
-            // Download
-            var nupkgFile = await entry.DownloadNupkgAsync(packageInfo.OutputDir, _mode, token);
+            var nupkgFile = new FileInfo(packageInfo.NupkgPath);
 
-            if (File.Exists(packageInfo.NupkgPath))
+            if (_options.SkipExisting && nupkgFile.Exists)
             {
-                var currentCreated = File.GetCreationTimeUtc(packageInfo.NupkgPath);
-
-                if (ShouldPersistPackageFile(lastCreated, currentCreated, packageInfo))
-                {
-                    result = nupkgFile;
-                    log.LogInformation(nupkgFile.FullName);
-
-                    PersistPackageFile(nupkgFile, packageInfo);
-                }
-                else
-                {
-                    log.LogDebug($"Skipping. Current file is the same or newer. {lastCreated.ToString("o")} {currentCreated.ToString("o")}" + nupkgFile.FullName);
-                }
+                log.LogInformation($"SKIPPED (package exists): {packageInfo.NupkgPath}");
             }
             else
             {
-                log.LogDebug($"Nupkg skipped. " + nupkgFile.FullName);
+                // Download
+                nupkgFile = await entry.DownloadNupkgAsync(packageInfo.OutputDir, _mode, token);
+
+                if (File.Exists(packageInfo.NupkgPath))
+                {
+                    var currentCreated = File.GetCreationTimeUtc(packageInfo.NupkgPath);
+
+                    if (ShouldPersistPackageFile(lastCreated, currentCreated, packageInfo))
+                    {
+                        result = nupkgFile;
+                        log.LogInformation($"DOWNLOADED: {nupkgFile.FullName}");
+
+                        PersistPackageFile(nupkgFile, packageInfo);
+                    }
+                    else
+                    {
+                        log.LogDebug($"SKIPPED (current file is the same or newer): {lastCreated.ToString("o")} {currentCreated.ToString("o")} {nupkgFile.FullName}");
+                    }
+                }
+                else
+                {
+                    log.LogDebug($"SKIPPED (download failure?): {nupkgFile.FullName}");
+                }
             }
 
             return result;

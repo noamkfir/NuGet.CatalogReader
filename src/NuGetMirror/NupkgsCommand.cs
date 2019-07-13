@@ -42,6 +42,7 @@ namespace NuGetMirror
             var onlyStableVersion = cmd.Option("--stable-only", "Include only stable versions of that package in the result", CommandOptionType.NoValue);
             var startOption = cmd.Option("--start", "Beginning of the commit time range. Packages commited AFTER this time will be included. (The cursor value will not be used with this option.)", CommandOptionType.SingleValue);
             var endOption = cmd.Option("--end", "End of the commit time range. Packages commited at this time will be included.", CommandOptionType.SingleValue);
+            var skipExistingOption = cmd.Option("--skip-existing", "Exclude packages that have already been downloaded. Useful for resuming aborted long-running operations. Could leave aborted files in invalid state.", CommandOptionType.NoValue);
 
             var argRoot = cmd.Argument(
                 "[root]",
@@ -175,14 +176,18 @@ namespace NuGetMirror
                 var log = new FileLogger(consoleLog, LogLevel.Error, errorLogPath);
                 var deepLogger = new FilterLogger(log, LogLevel.Error);
 
+                var packagePersisterOptions = new PackagePersisterOptions() {
+                    SkipExisting = skipExistingOption.HasValue(),
+                };
+
                 IPackagePersister persister;
                 if (useV3Format)
                 {
-                    persister = new NupkgV3PackagePersister(storagePaths, mode, log, deepLogger);
+                    persister = new NupkgV3PackagePersister(storagePaths, mode, log, deepLogger, packagePersisterOptions);
                 }
                 else
                 {
-                    persister = new NupkgV2PackagePersister(storagePaths, mode, log, deepLogger);
+                    persister = new NupkgV2PackagePersister(storagePaths, mode, log, deepLogger, packagePersisterOptions);
                 }
 
                 // Init

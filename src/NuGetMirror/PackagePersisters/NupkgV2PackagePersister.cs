@@ -21,8 +21,9 @@ namespace NuGetMirror.PackagePersisters
             IEnumerable<DirectoryInfo> storagePaths,
             DownloadMode mode,
             ILogger log,
-            ILogger deepLog
-        ) : base(storagePaths, mode, log, deepLog)
+            ILogger deepLog,
+            PackagePersisterOptions options
+        ) : base(storagePaths, mode, log, deepLog, options)
         {
         }
 
